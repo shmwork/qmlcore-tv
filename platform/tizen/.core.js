@@ -72,6 +72,6 @@ exports.core.keyCodes = {
 	413: 'Stop',
 	412: 'Rewind',
 	417: 'FastForward',
-	10252: 'Pause',
+	10252: 'PlayPause',
 	10009: 'Back'
 }
