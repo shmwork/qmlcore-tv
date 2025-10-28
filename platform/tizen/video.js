@@ -1,5 +1,5 @@
 var Player = function(ui) {
-	var player = ui._context.createElement('object')
+	var player = ui._context.createElement("object")
 	player.dom.setAttribute("id", "av-player")
 	player.dom.setAttribute("type", "application/avplayer")
 	if (!window.webapis) {
@@ -46,6 +46,7 @@ var Player = function(ui) {
 			log("error type: " + eventType);
 			self.ui.ready = false
 			self.ui.error({ "type": eventType, "message": eventType })
+			self.againPlay()
 		}),
 		onsubtitlechange : this.wrapCallback(function(duration, text, data3, data4) {
 			log("Subtitle Changed.");
@@ -81,6 +82,77 @@ var Player = function(ui) {
 	var tizen = window.tizen
 	if (tizen && tizen.systeminfo)
 		tizen.systeminfo.getPropertyValue("BUILD", this.fillDeviceInfo.bind(this));
+}
+
+
+Player.prototype.againPlay = function() {
+	var self = this
+	self.fetchMasterManifest(self.ui.source, function(data){	
+		var url = self.parseMasterManifest(data.content).videoUrl
+		var baseurl = self.getBaseUrl(self.ui.source)
+		self.ui.source = baseurl+url
+		self.playImpl()
+	})
+}
+
+Player.prototype.fetchMasterManifest = function (m3u8Url, callback) {
+	var xhr = new XMLHttpRequest();
+	xhr.open("GET", m3u8Url, true);
+	xhr.onload = function() {
+		if (xhr.status >= 200 && xhr.status < 300) {
+		var manifestText = xhr.responseText;	
+		callback({
+			content: manifestText,
+			url: m3u8Url
+		});
+		} else {
+		callback(new Error("Request failed with status: " + xhr.status));
+		}
+	};
+	xhr.onerror = function() {
+		callback(new Error("Request failed"));
+	};
+	xhr.send();
+}
+
+Player.prototype.parseMasterManifest = function (manifestText) {
+	var lines = manifestText.split("\n");
+	var videoUrl = null;
+	var subtitlesUrl = null;
+
+	for (var i = 0; i < lines.length; i++) {
+		var line = lines[i].trim();
+		// Ищем URL субтитров (ES5-совместимый вариант)
+		if (line.indexOf("#EXT-X-MEDIA:TYPE=SUBTITLES") === 0) {
+		var uriMatch = /URI="([^"]+)"/.exec(line);
+		if (uriMatch && uriMatch[1]) {
+			subtitlesUrl = uriMatch[1];
+		}}
+		// Ищем видео-поток
+		if (line.indexOf("#EXT-X-STREAM-INF:") === 0) {
+		if (i + 1 < lines.length && lines[i + 1].trim() && lines[i + 1].trim().indexOf("#") !== 0) {
+			videoUrl = lines[i + 1].trim();
+		}}
+	}
+
+	return {
+		videoUrl: videoUrl,
+		subtitlesUrl: subtitlesUrl
+	};
+};
+
+Player.prototype.getBaseUrl = function (fullUrl) {
+	// Проверяем, есть ли query-параметры
+	var queryIndex = fullUrl.indexOf("?");
+	var urlWithoutQuery = queryIndex !== -1 
+		? fullUrl.substring(0, queryIndex) 
+		: fullUrl;
+	// Находим последний слэш перед именем файла
+	var lastSlashIndex = urlWithoutQuery.lastIndexOf("/");
+	if (lastSlashIndex !== -1) {
+		return urlWithoutQuery.substring(0, lastSlashIndex + 1);
+	}
+	return fullUrl; // Если слэшей нет, возвращаем как есть
 }
 
 Player.prototype.fillDeviceInfo = function(device) {
@@ -138,7 +210,7 @@ Player.prototype.playImpl = function() {
 	var state = avplay.getState()
 	log("playImpl", state, "src", ui.source)
 
-	if (state != 'NONE')
+	if (state != "NONE")
 		this.closeVideo()
 
 	log("playImpl", ui.source, "state", state)
@@ -150,10 +222,10 @@ Player.prototype.playImpl = function() {
 	log("Init player, src:", ui.source, "width:", ui.width, "height:", ui.height)
 	log("DRM:", this._drm)
 	if (this._drm) {
-		log('Apply DRM:', this._drm);
+		log("Apply DRM:", this._drm);
 		var drm = this._drm
 		if (drm.widevine) {
-			var deviceId = window.webapis.drminfo.getEsn('WIDEVINE');
+			var deviceId = window.webapis.drminfo.getEsn("WIDEVINE");
 			var licenseServer = drm.widevine.laServer;
 			this._drmParam = "DEVICE_ID=" + deviceId + "|DEVICE_TYPE_ID=60|STREAM_ID=|IP_ADDR=|DRM_URL=" + licenseServer + "|PORTAL=OEM|I_SEEK=|CUR_TIME=|USER_DATA=";
 			avplay.setStreamingProperty("WIDEVINE", this._drmParam);
@@ -177,7 +249,7 @@ Player.prototype.playImpl = function() {
 		log("Current state: " + avplay.getState());
 		log("prepare complete source", ui.source);
 		self.updateDuration()
-		var ready = avplay.getState() === "READY"
+		var ready = avplay.getState() === "READY"	
 		if (ui.autoPlay)
 			self.play()
 		log("prepare complete", ui.ready, "autoplay", ui.autoPlay);
@@ -191,7 +263,7 @@ Player.prototype.play = function() {
 		log("AVPlay was not initialized")
 		return
 	}
-	log('Play Video', this.ui.source);
+	log("Play Video", this.ui.source);
 	try {
 		avplay.play();
 		this.ui.paused = avplay.getState() == "PAUSED"
@@ -214,7 +286,7 @@ Player.prototype.setupDrm = function(type, options, callback, error) {
 
 	var avplay = this.getAVPlay()
 	var drm = this._drm
-	log('Apply DRM:', this._drm);
+	log("Apply DRM:", this._drm);
 	if (callback)
 		callback()
 }
@@ -241,6 +313,10 @@ Player.prototype.getVideoTracks = function() {
 
 Player.prototype.getSubtitles = function() {
 	var subtitles = []
+	subtitles.push({
+		id: "off",
+		label: "Выкл"
+	})
 	var avplay = this.getAVPlay()
 	var tracks = avplay.getTotalTrackInfo()
 
@@ -253,10 +329,11 @@ Player.prototype.getSubtitles = function() {
 
 		subtitles.push({
 			id: parseInt(track.index),
+			label: "Русский",
 			language: info.track_lang
 		})
 	}
-	log("Got subtitles", subtitles)
+	log("Got subtitles", JSON.stringify(subtitles))
 	return subtitles
 }
 
@@ -291,7 +368,7 @@ Player.prototype.setSubtitles = function(trackId) {
 
 	log("Try to set subtitles", found)
 	if (found && found.length)
-		avplay.setSelectTrack('TEXT', parseInt(found[0].index));
+		avplay.setSelectTrack("TEXT", parseInt(found[0].index));
 }
 
 Player.prototype.setAudioTrack = function(trackId) {
@@ -305,7 +382,7 @@ Player.prototype.setAudioTrack = function(trackId) {
 	log("Try to set audio track", found)
 	if (found && found.length) {
 		log("Seek after audio state", avplay.getState())
-		avplay.setSelectTrack('AUDIO', parseInt(found[0].index));
+		avplay.setSelectTrack("AUDIO", parseInt(found[0].index));
 		this.seek(1)
 	}
 }
@@ -317,9 +394,9 @@ Player.prototype.setVideoTrack = function(trackId) {
 	log("Total tracks", tracks)
 
 	if (trackId === "auto") {
-		var bitRateString = 'BITRATES=5000~50000|STARTBITRATE=HIGHEST|SKIPBITRATE=LOWEST'
+		var bitRateString = "BITRATES=5000~50000|STARTBITRATE=HIGHEST|SKIPBITRATE=LOWEST"
 		try {
-			avplay.setStreamingProperty('ADAPTIVE_INFO', bitRateString)
+			avplay.setStreamingProperty("ADAPTIVE_INFO", bitRateString)
 		} catch(e) {
 			log("Failed to cahgne bitrate", e)
 		}
@@ -333,10 +410,10 @@ Player.prototype.setVideoTrack = function(trackId) {
 		if (!found || !found.length)
 			return
 		var info = JSON.parse(found[0].extra_info)
-		var bitRateString = 'BITRATES=5000~' + info.Bit_rate + "|STARTBITRATE=HIGHEST|SKIPBITRATE=LOWEST";
+		var bitRateString = "BITRATES=5000~" + info.Bit_rate + "|STARTBITRATE=HIGHEST|SKIPBITRATE=LOWEST";
 		log("Found info", bitRateString, "INFO", info)
 		try {
-			avplay.setStreamingProperty('ADAPTIVE_INFO', bitRateString)
+			avplay.setStreamingProperty("ADAPTIVE_INFO", bitRateString)
 		} catch(e) {
 			log("Failed to cahgne bitrate", e)
 		}
@@ -390,7 +467,7 @@ Player.prototype.pause = function() {
 		return
 	}
 
-	log('Pause Video', avplay);
+	log("Pause Video", avplay);
 	try {
 		avplay.pause();
 		this.ui.paused = avplay.getState() == "PAUSED"
@@ -409,7 +486,7 @@ Player.prototype.stop = function() {
 	}
 
 	log("Current state: " + avplay.getState());
-	log('Stop Video');
+	log("Stop Video");
 	try {
 		avplay.stop();
 		log("Current state: " + avplay.getState());
@@ -469,7 +546,7 @@ Player.prototype.closeVideo = function() {
 		return
 	}
 	log("Current state: " + avplay.getState());
-	log('Close Video');
+	log("Close Video");
 	try {
 		avplay.close();
 		log("Current state: " + avplay.getState());
