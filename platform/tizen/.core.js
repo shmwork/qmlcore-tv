@@ -11,6 +11,7 @@ if ('tizen' in window) {
 
 	var inputDevice = window.tizen.tvinputdevice
 	if (inputDevice) {
+		// TODO: добавить общий массив, и цикл по которому будет регистрироваться кнопка и поверяться кнопка. Обьеденить с keyCodes
 		inputDevice.registerKey("0")
 		inputDevice.registerKey("1")
 		inputDevice.registerKey("2")
@@ -33,6 +34,11 @@ if ('tizen' in window) {
 		inputDevice.registerKey("MediaPlay")
 		inputDevice.registerKey("MediaStop")
 		inputDevice.registerKey("MediaPause")
+		try {
+			inputDevice.registerKey("PreviousChannel")
+		} catch(e) {
+			log(e)
+		}
 	} else {
 		log('"inputDevice" is undefined dont forget to add privilege: <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/> into the "config.xml"')
 	}
@@ -73,5 +79,7 @@ exports.core.keyCodes = {
 	412: 'Rewind',
 	417: 'FastForward',
 	10252: 'PlayPause',
-	10009: 'Back'
+	10009: 'Back',
+	259: 'PreviousChannel',
+	10190: 'PreviousChannel'
 }
