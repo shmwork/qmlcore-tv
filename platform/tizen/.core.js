@@ -11,6 +11,7 @@ if ('tizen' in window) {
 
 	var inputDevice = window.tizen.tvinputdevice
 	if (inputDevice) {
+		// TODO: добавить общий массив, и цикл по которому будет регистрироваться кнопка и поверяться кнопка. Обьеденить с keyCodes
 		inputDevice.registerKey("0")
 		inputDevice.registerKey("1")
 		inputDevice.registerKey("2")
