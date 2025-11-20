@@ -9,8 +9,38 @@ if ('tizen' in window) {
 	exports.core.device = 1
 	exports.core.os = "tizen"
 
+	var handleConnectionStatus = function(info) {
+		if (!info || !info.networkType) {
+			return
+		}
+		try {
+			var status = info.networkType.toUpperCase() !== "NONE"
+			_globals._context.system.networkStatus = status
+		} catch (e) {
+			log(e)
+		}
+	}
+
+	var setupNetworkMonitoring = function() {
+		var systeminfo = window.tizen.systeminfo
+		if (!systeminfo || typeof systeminfo.addPropertyValueChangeListener !== "function") {
+			return
+		}
+		try {
+			systeminfo.getPropertyValue("NETWORK", handleConnectionStatus, function(error) {
+				log("Failed to get initial NETWORK property", error)
+			})
+			systeminfo.addPropertyValueChangeListener("NETWORK", handleConnectionStatus, function(error) {
+				log("NETWORK listener error", error)
+			})
+		} catch (e) {
+			log("NETWORK monitoring error", e)
+		}
+	}
+
 	var inputDevice = window.tizen.tvinputdevice
 	if (inputDevice) {
+		// TODO: добавить общий массив, и цикл по которому будет регистрироваться кнопка и поверяться кнопка. Обьеденить с keyCodes
 		inputDevice.registerKey("0")
 		inputDevice.registerKey("1")
 		inputDevice.registerKey("2")
@@ -33,6 +63,11 @@ if ('tizen' in window) {
 		inputDevice.registerKey("MediaPlay")
 		inputDevice.registerKey("MediaStop")
 		inputDevice.registerKey("MediaPause")
+		try {
+			inputDevice.registerKey("PreviousChannel")
+		} catch(e) {
+			log(e)
+		}
 	} else {
 		log('"inputDevice" is undefined dont forget to add privilege: <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/> into the "config.xml"')
 	}
@@ -40,6 +75,8 @@ if ('tizen' in window) {
 	exports.closeApp = function() {
 		window.tizen.application.getCurrentApplication().exit();
 	}
+
+	setupNetworkMonitoring()
 
 	log("tizen initialized")
 }
@@ -73,5 +110,7 @@ exports.core.keyCodes = {
 	412: 'Rewind',
 	417: 'FastForward',
 	10252: 'PlayPause',
-	10009: 'Back'
+	10009: 'Back',
+	259: 'PreviousChannel',
+	10190: 'PreviousChannel'
 }
