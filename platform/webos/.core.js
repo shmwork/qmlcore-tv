@@ -9,6 +9,39 @@ if ('webOS' in window || 'webos' in window) {
 	exports.core.device = 1
 	exports.core.os = "webOS"
 
+	var handleConnectionStatus = function(response) {
+		if (!response)
+			return
+		try {
+			_globals._context.system.networkStatus = response.isInternetConnectionAvailable
+		} catch (e) {
+			console.log(e)
+		}
+	}
+
+	var setupNetworkMonitoring = function() {
+		var service = window.webOS && window.webOS.service
+		if (!service || typeof service.request !== "function") {
+			dispatchNetworkEvent(typeof navigator !== "undefined" ? navigator.onLine !== false : true)
+			return
+		}
+		try {
+			service.request("luna://com.palm.connectionmanager", {
+				method: "getstatus",
+				parameters: { subscribe: true },
+				onSuccess: function(response) {
+					handleConnectionStatus(response)
+				},
+				onFailure: function(err) {
+					log("connectionmanager error", err)
+				}
+			})
+		} catch (e) {
+			log("Failed to subscribe for network status", e)
+			dispatchNetworkEvent(typeof navigator !== "undefined" ? navigator.onLine !== false : true)
+		}
+	}
+
 	exports.core.keyCodes = {
 		37: 'Left',
 		38: 'Up',
@@ -54,4 +87,6 @@ if ('webOS' in window || 'webos' in window) {
 	exports.platformBack = function() {
 		window.webOS.platformBack();
 	}
+
+	setupNetworkMonitoring()
 }
