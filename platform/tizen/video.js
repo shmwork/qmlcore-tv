@@ -1,3 +1,4 @@
+var confirmDelay = 800 // confirm player status after this delay
 var Player = function(ui) {
 	var player = ui._context.createElement("object")
 	player.dom.setAttribute("id", "av-player")
@@ -20,24 +21,24 @@ var Player = function(ui) {
 	var context = ui._context
 	this._listener = {
 		onbufferingstart : this.wrapCallback(function() {
-			log("onbufferingstart")
 			self.ui.waiting = true
 			self.ui.seeking = true
 		}),
 		onbufferingprogress : this.wrapCallback(function(percent) {
-			log("onbufferingprogress")
 			context._processActions()
 		}),
 		onbufferingcomplete : this.wrapCallback(function() {
-			log("onbufferingcomplete")
 			self.ui.seeking = false
 			self.ui.waiting = false
+			// confirm avplay internal state after buffering completes
+			self._syncAvplayState();
 		}),
 		oncurrentplaytime : this.wrapCallback(function(currentTime) {
-			if (currentTime)
-				self.ui.waiting = false
+			if (currentTime) self.ui.waiting = false
 			self.ui.ready = true
 			self.updateCurrentTime(currentTime);
+			// when we receive current time, likely playback started — sync state
+			self._syncAvplayState();
 		}),
 		onevent : this.wrapCallback(function(eventType, eventData) {
 			log("event type: " + eventType + ", data: " + eventData);
@@ -74,6 +75,9 @@ var Player = function(ui) {
 			} else {
 				log("Stream Completed");
 				self.ui.ready = false
+				// mark paused-like (ended) and sync
+				self.ui.paused = true;
+				self._syncAvplayState();
 				self.ui.finished()
 			}
 		})
@@ -249,27 +253,47 @@ Player.prototype.playImpl = function() {
 		log("Current state: " + avplay.getState());
 		log("prepare complete source", ui.source);
 		self.updateDuration()
-		var ready = avplay.getState() === "READY"	
-		if (ui.autoPlay)
-			self.play()
-		log("prepare complete", ui.ready, "autoplay", ui.autoPlay);
-		ui.ready = ready
-	})
+		ui.ready = (avplay.getState() === "READY");
+		if (ui.autoPlay) {
+			self.play();
+		} else {
+			self._syncAvplayState();
+		}
+	});
+}
+
+Player.prototype._syncAvplayState = function() {
+	try {
+		var avplay = this.getAVPlay();
+		if (!avplay || !this.ui) return;
+		var s = avplay.getState();
+		// keep mapping you use for paused
+		this.ui.paused = (s === "PAUSED" || s === "STOPPED" || s === "NONE" || s === "IDLE");
+	} catch (e) {
+		log("syncAvplayState error", e);
+	}
 }
 
 Player.prototype.play = function() {
-	var avplay = this.getAVPlay()
+	var self = this;
+	var avplay = self.getAVPlay()
 	if (!avplay) {
 		log("AVPlay was not initialized")
 		return
 	}
-	log("Play Video", this.ui.source);
+	log("Play Video", self.ui.source);
 	try {
 		avplay.play();
-		this.ui.paused = avplay.getState() == "PAUSED"
-		log("Current state: " + avplay.getState());
+		self.ui.paused = false;
+		setTimeout(function() {
+			self._syncAvplayState();
+		}, confirmDelay);
+
+		log("Play invoked. getState:", avplay.getState());
 	} catch (e) {
 		log(e);
+		// try to sync state on exception
+		self._syncAvplayState();
 	}
 }
 
@@ -461,7 +485,8 @@ Player.prototype.setVisibility = function(visible) {
 }
 
 Player.prototype.pause = function() {
-	var avplay = this.getAVPlay()
+	var self = this;
+	var avplay = self.getAVPlay()
 	if (!avplay) {
 		log("AVPlay was not initialized")
 		return
@@ -470,29 +495,37 @@ Player.prototype.pause = function() {
 	log("Pause Video", avplay);
 	try {
 		avplay.pause();
-		this.ui.paused = avplay.getState() == "PAUSED"
-		log("Current state: " + avplay.getState());
+		self.ui.paused = true;
+		// confirm after delay
+		setTimeout(function() {
+			self._syncAvplayState();
+		}, confirmDelay);
 	} catch (e) {
 		log(e);
+		self._syncAvplayState();
 	}
-}
+};
 
 //missing API in VideoPlayer
 Player.prototype.stop = function() {
-	var avplay = this.getAVPlay()
+	var self = this;
+	var avplay = self.getAVPlay()
 	if (!avplay) {
 		log("AVPlay was not initialized")
 		return
 	}
-
-	log("Current state: " + avplay.getState());
 	log("Stop Video");
 	try {
 		avplay.stop();
-		log("Current state: " + avplay.getState());
 	} catch (e) {
-		log("Current state: " + avplay.getState());
-		log(e);
+		log("stop() error", e);
+		self._syncState();
+	} finally {
+		self.ui.paused = true;
+		self.ui.ready = false;
+		setTimeout(function() {
+			self._syncState();
+		}, confirmDelay);
 	}
 }
 
