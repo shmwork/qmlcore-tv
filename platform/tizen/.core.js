@@ -33,6 +33,7 @@ if ('tizen' in window) {
 		inputDevice.registerKey("MediaPlay")
 		inputDevice.registerKey("MediaStop")
 		inputDevice.registerKey("MediaPause")
+		inputDevice.registerKey("PreviousChannel")
 	} else {
 		log('"inputDevice" is undefined dont forget to add privilege: <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/> into the "config.xml"')
 	}
@@ -73,5 +74,7 @@ exports.core.keyCodes = {
 	412: 'Rewind',
 	417: 'FastForward',
 	10252: 'PlayPause',
-	10009: 'Back'
+	10009: 'Back',
+	259: 'PreviousChannel',
+	10190: 'PreviousChannel'
 }

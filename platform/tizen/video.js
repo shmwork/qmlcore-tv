@@ -339,7 +339,8 @@ Player.prototype.getSubtitles = function() {
 	var subtitles = []
 	subtitles.push({
 		id: "off",
-		label: "Выкл"
+		label: "Выкл",
+		active: true
 	})
 	var avplay = this.getAVPlay()
 	var tracks = avplay.getTotalTrackInfo()
