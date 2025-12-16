@@ -36,7 +36,9 @@ var Player = function(ui) {
 		oncurrentplaytime : this.wrapCallback(function(currentTime) {
 			if (currentTime) self.ui.waiting = false
 			self.ui.ready = true
-			self.updateCurrentTime(currentTime);
+			if(!self.ui.seeking){
+				self.updateCurrentTime(currentTime);
+			}
 			// when we receive current time, likely playback started — sync state
 			self._syncAvplayState();
 		}),
