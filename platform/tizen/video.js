@@ -214,18 +214,14 @@ Player.prototype.playImpl = function() {
 	if (!ui.source)
 		return
 	var state = avplay.getState()
-	log("playImpl", state, "src", ui.source)
-
 	if (state != "NONE")
 		this.closeVideo()
-
-	log("playImpl", ui.source, "state", state)
 	ui.duration = 0
 	log("playImpl open")
 	avplay.open(ui.source);
 	log("playImpl setListener")
 	avplay.setListener(this._listener);
-	log("Init player, src:", ui.source, "width:", ui.width, "height:", ui.height)
+	log("Init player width:", ui.width, "height:", ui.height)
 	log("DRM:", this._drm)
 	if (this._drm) {
 		log("Apply DRM:", this._drm);
@@ -244,14 +240,26 @@ Player.prototype.playImpl = function() {
 	avplay.setDisplayRect(ui.x, ui.y, ui.width, ui.height);
 	log("Set UHD flag", this._uhdSupported, "allowUhdPlaying", ui.allowUhdPlaying, "startPos", ui.startPosition)
 	avplay.setStreamingProperty("SET_MODE_4K", ui.allowUhdPlaying && this._uhdSupported ? "TRUE" : "FALSE");
-	avplay.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
 
-	if (ui.startPosition)
-		avplay.seekTo(ui.startPosition * 1000, function() { log("seeked on start") }, function(err) { log("failed to seek on start",err) });
+	if (ui.startPosition) {
+		avplay.seekTo(
+			ui.startPosition * 1000,
+			function() { log("seeked on start") },
+			function(err) { log("failed to seek on start",err) }
+		);
+	}
 
 	log("playImpl prepare")
 	var self = this
 	avplay.prepareAsync(function() {
+		// NOTE: letter box сжимал в 4/3 1й канал, full screen и auto aspect растягивали vod контент.
+		switch (ui.mode) {
+			case "vod":
+				avplay.setDisplayMethod("PLAYER_DISPLAY_MODE_LETTER_BOX");
+				break
+			default:
+				avplay.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
+		}
 		log("Current state: " + avplay.getState());
 		log("prepare complete source", ui.source);
 		self.updateDuration()
@@ -564,7 +572,12 @@ Player.prototype.setRect = function(l, t, r, b) {
 		log("AVPlay was not initialized")
 		return
 	}
-	avplay.setDisplayRect(l, t, r - l, b - t)
+	var st = avplay.getState();
+	if (st === "IDLE" || st === "READY" || st === "PLAYING" || st === "PAUSED") {
+		avplay.setDisplayRect(l, t, r - l, b - t)
+	} else {
+		log("Can't set setDisplayRect, incorrect player state")
+	}
 }
 
 Player.prototype.setBackgroundColor = function(color) {
