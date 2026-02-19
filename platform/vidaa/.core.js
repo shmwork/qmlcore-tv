@@ -2,8 +2,8 @@ _globals.core.__deviceBackend = function() { return _globals.hisense.device }
 _globals.core.__videoBackends.hisense = function() { return _globals.hisense.video }
 
 log = console.log.bind(console)
-log("Hisense detected")
-exports.core.os = "hisense"
+log("VIDAA detected")
+exports.core.os = "vidaa"
 exports.core.vendor = "Hisense"
 exports.core.device = 1
 
@@ -81,4 +81,4 @@ function handler(e){
 	e.preventDefault();
 }
 
-log("Hisense initialized")
+log("VIDAA initialized")
