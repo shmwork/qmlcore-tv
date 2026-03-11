@@ -214,6 +214,10 @@ Player.prototype.setSource = function(value) {
 		this._suspendState.url = value
 		this._suspendState.progress = this.ui.startPosition
 	}
+	if (this._preparing) {
+		log("aborting previous prepare and restarting");
+		this.closeVideo()
+	}
 	this.playImpl()
 }
 
