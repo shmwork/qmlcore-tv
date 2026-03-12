@@ -14,6 +14,7 @@ var Player = function(ui) {
 	this._seekingDebaunce = false
 	this._seekTimer = null;				// таймер для дебаунса seekTo
 	this._blockProgressUpdate = false	// блокирует updateCurrentTime, что бы избежать дергание ползунка
+	this._seekStuckTimer = null; // таймер для проверки залипшего seek
 	log("WEBAPIS", this._webapis)
 
 	this.ui = ui
@@ -533,38 +534,39 @@ Player.prototype.setVideoTrack = function(trackId) {
 }
 
 Player.prototype.setVisibility = function(visible) {
-	var avplay = this.getAVPlay()
-	if (!avplay) {
-		log("AVPlay was not initialized")
-		return
-	}
+	// TODO: suspend режим
+	// var avplay = this.getAVPlay()
+	// if (!avplay) {
+		// log("AVPlay was not initialized")
+		// return
+	// }
 
-	log("setVisibility", visible, "state", avplay.getState(), "notsuspend", this._notSuspend)
-	if (this._notSuspend)
-		return
+	// log("setVisibility", visible, "state", avplay.getState(), "notsuspend", this._notSuspend)
+	// if (this._notSuspend)
+		// return
 
-	if (visible) {
-		log("Check suspend state", this._suspendState)
-		if (this._suspendState) {
-			var state = this._suspendState
-			try {
-				avplay.restore(state.url, state.progress * 1000)
-			} catch (e) {
-				log("Failed to restore")
-			}
-		}
-		this._suspendState = null
-	} else {
-		try {
-			this._suspendState = {
-				progress: this.ui.progress,
-				url: this.ui.source
-			}
-			avplay.suspend()
-		} catch (e) {
-			log("Failed to suspend avplay", e)
-		}
-	}
+	// if (visible) {
+		// log("Check suspend state", this._suspendState)
+		// if (this._suspendState) {
+			// var state = this._suspendState
+			// try {
+				// avplay.restore(state.url, state.progress * 1000)
+			// } catch (e) {
+				// log("Failed to restore")
+			// }
+		// }
+		// this._suspendState = null
+	// } else {
+		// try {
+			// this._suspendState = {
+				// progress: this.ui.progress,
+				// url: this.ui.source
+			// }
+			// avplay.suspend()
+		// } catch (e) {
+			// log("Failed to suspend avplay", e)
+		// }
+	// }
 }
 
 Player.prototype.pause = function() {
@@ -638,22 +640,35 @@ Player.prototype.seekTo = function(tp) {
 
 Player.prototype._doSeek = function() {
 	var avplay = this.getAVPlay();
+	var self = this;
 	if (!avplay) return;
-	if (this._seekingDebaunce) {
+	if (self._seekingDebaunce) {
 		log("_doSeek: already seeking, pending will wait");
 		return;
 	}
-	if (this._pendingSeek === null) return;
-
-	var target = this._pendingSeek;
-	this._pendingSeek = null;
-	this._seekingDebaunce = true;
-	this.ui.seeking = true;
-
+	if (self._pendingSeek === null) return;
+	var target = self._pendingSeek;
+	self._pendingSeek = null;
+	self._seekingDebaunce = true;
+	self.ui.seeking = true;
 	var ms = Math.floor(target * 1000);
-	var self = this;
-
-	self._blockProgressUpdate = true
+	self._blockProgressUpdate = true;
+	// NOTE: может быть кейс, при котором avplay.seekTo не вернет коллбеки. В таком случаи
+	// не снимется _seekingDebaunce, из за чего последующая перемотка не будет работать
+	if (self._seekStuckTimer) {
+		clearTimeout(self._seekStuckTimer);
+		self._seekStuckTimer = null;
+	}
+	self._seekStuckTimer = setTimeout(function() {
+		if (self._seekingDebaunce) {
+			log("_doSeek: seek seems stuck. Clearing _seekingDebaunce");
+			self._seekingDebaunce = false;
+			self.ui.seeking = false;
+			self._blockProgressUpdate = false;
+			self._syncAvplayState();
+		}
+		self._seekStuckTimer = null;
+	}, 1500);
 
 	try {
 		avplay.seekTo(ms,
@@ -665,17 +680,25 @@ Player.prototype._doSeek = function() {
 		this._seekingDebaunce = false;
 		this.ui.seeking = false;
 		this._syncAvplayState();
-		self._blockProgressUpdate = false
+		self._blockProgressUpdate = false;
+		if (self._seekStuckTimer) {
+			clearTimeout(self._seekStuckTimer)
+			self._seekStuckTimer = null
+		}
 	}
+	// блокируем обновление ui.progress, для того что бы избежать получение неправильного progress
+	setTimeout(function() {
+		self._blockProgressUpdate = false;
+	}, 1500);
 };
 
 // замените существующую success-ветку в _onSeekResult на это
 Player.prototype._onSeekResult = function(err, target) {
 	var self = this;
-	// блокируем обновление ui.progress, для того что бы избежать получение неправильного progress
-	setTimeout(function() {
-		self._blockProgressUpdate = false
-	}, 1000)
+	if (self._seekStuckTimer) {
+		clearTimeout(self._seekStuckTimer);
+		self._seekStuckTimer = null;
+	}
 	var avplay = this.getAVPlay();
 	if (err) {
 		log("_onSeekResult: error", err);
@@ -741,17 +764,19 @@ Player.prototype.setMute = function(muted) {
 }
 
 Player.prototype.setRect = function(l, t, r, b) {
-	var avplay = this.getAVPlay()
-	if (!avplay) {
-		log("AVPlay was not initialized")
-		return
-	}
-	var st = avplay.getState();
-	if (st === "IDLE" || st === "READY" || st === "PLAYING" || st === "PAUSED") {
-		avplay.setDisplayRect(l, t, r - l, b - t)
-	} else {
-		log("Can't set setDisplayRect, incorrect player state")
-	}
+	// NOTE: вызывал проблему изменения соотношения сторон после остановки и воспроизведения
+	// var avplay = this.getAVPlay()
+	// if (!avplay) {
+		// log("AVPlay was not initialized")
+		// return
+	// }
+	// var st = avplay.getState();
+	// log("@@set rect", st)
+	// if (st === "IDLE" || st === "READY" || st === "PLAYING" || st === "PAUSED") {
+		// avplay.setDisplayRect(l, t, r - l, b - t)
+	// } else {
+		// log("Can't set setDisplayRect, incorrect player state")
+	// }
 }
 
 Player.prototype.setBackgroundColor = function(color) {
