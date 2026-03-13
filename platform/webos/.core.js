@@ -54,4 +54,16 @@ if ('webOS' in window || 'webos' in window) {
 	exports.platformBack = function() {
 		window.webOS.platformBack();
 	}
+
+	window.webOS.service.request("luna://com.palm.connectionmanager", {
+		method: "getStatus",
+		parameters: { subscribe: true },
+		onSuccess: function (inResponse) {
+			_globals._context.system.networkStatus = inResponse.isInternetConnectionAvailable
+		},
+		onFailure: function (inError) {
+			console.log("Failed to get network state from subscription");
+			return;
+		}
+	})
 }
