@@ -61,8 +61,6 @@ var Player = function(ui) {
 			} catch(e) {
 				log("close video fail", e)
 			}
-			if (self.ui.mode !== "vod")
-				self.againPlay()
 		}),
 		onsubtitlechange : this.wrapCallback(function(duration, text, data3, data4) {
 			log("Subtitle Changed.");
@@ -101,77 +99,6 @@ var Player = function(ui) {
 	var tizen = window.tizen
 	if (tizen && tizen.systeminfo)
 		tizen.systeminfo.getPropertyValue("BUILD", this.fillDeviceInfo.bind(this));
-}
-
-
-Player.prototype.againPlay = function() {
-	var self = this
-	self.fetchMasterManifest(self.ui.source, function(data){	
-		var url = self.parseMasterManifest(data.content).videoUrl
-		var baseurl = self.getBaseUrl(self.ui.source)
-		self.ui.source = baseurl+url
-		self.playImpl()
-	})
-}
-
-Player.prototype.fetchMasterManifest = function (m3u8Url, callback) {
-	var xhr = new XMLHttpRequest();
-	xhr.open("GET", m3u8Url, true);
-	xhr.onload = function() {
-		if (xhr.status >= 200 && xhr.status < 300) {
-		var manifestText = xhr.responseText;	
-		callback({
-			content: manifestText,
-			url: m3u8Url
-		});
-		} else {
-		callback(new Error("Request failed with status: " + xhr.status));
-		}
-	};
-	xhr.onerror = function() {
-		callback(new Error("Request failed"));
-	};
-	xhr.send();
-}
-
-Player.prototype.parseMasterManifest = function (manifestText) {
-	var lines = manifestText.split("\n");
-	var videoUrl = null;
-	var subtitlesUrl = null;
-
-	for (var i = 0; i < lines.length; i++) {
-		var line = lines[i].trim();
-		// Ищем URL субтитров (ES5-совместимый вариант)
-		if (line.indexOf("#EXT-X-MEDIA:TYPE=SUBTITLES") === 0) {
-		var uriMatch = /URI="([^"]+)"/.exec(line);
-		if (uriMatch && uriMatch[1]) {
-			subtitlesUrl = uriMatch[1];
-		}}
-		// Ищем видео-поток
-		if (line.indexOf("#EXT-X-STREAM-INF:") === 0) {
-		if (i + 1 < lines.length && lines[i + 1].trim() && lines[i + 1].trim().indexOf("#") !== 0) {
-			videoUrl = lines[i + 1].trim();
-		}}
-	}
-
-	return {
-		videoUrl: videoUrl,
-		subtitlesUrl: subtitlesUrl
-	};
-};
-
-Player.prototype.getBaseUrl = function (fullUrl) {
-	// Проверяем, есть ли query-параметры
-	var queryIndex = fullUrl.indexOf("?");
-	var urlWithoutQuery = queryIndex !== -1 
-		? fullUrl.substring(0, queryIndex) 
-		: fullUrl;
-	// Находим последний слэш перед именем файла
-	var lastSlashIndex = urlWithoutQuery.lastIndexOf("/");
-	if (lastSlashIndex !== -1) {
-		return urlWithoutQuery.substring(0, lastSlashIndex + 1);
-	}
-	return fullUrl; // Если слэшей нет, возвращаем как есть
 }
 
 Player.prototype.fillDeviceInfo = function(device) {
