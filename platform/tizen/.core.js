@@ -78,3 +78,11 @@ exports.core.keyCodes = {
 	259: 'PreviousChannel',
 	10190: 'PreviousChannel'
 }
+
+window.webapis.network.addNetworkStateChangeListener(function(value) {
+	if (value == webapis.network.NetworkState.GATEWAY_DISCONNECTED) {
+		_globals._context.system.networkStatus = false
+	} else if (value == webapis.network.NetworkState.GATEWAY_CONNECTED) {
+		_globals._context.system.networkStatus = true
+	}
+});
