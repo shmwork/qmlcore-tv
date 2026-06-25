@@ -15,6 +15,7 @@ var Player = function(ui) {
 	this._seekTimer = null;				// таймер для дебаунса seekTo
 	this._blockProgressUpdate = false	// блокирует updateCurrentTime, что бы избежать дергание ползунка
 	this._seekStuckTimer = null; // таймер для проверки залипшего seek
+	this._seekResultPlayingCheckTimer = null; // таймер для проверки залипшего seek
 	log("WEBAPIS", this._webapis)
 
 	this.ui = ui
@@ -160,7 +161,7 @@ Player.prototype.playImpl = function() {
 		log("playImpl: already preparing, skip");
 		return;
 	}
-	var state = avplay.getState()
+	var state = this.getState()
 	if (state && state !== "NONE") {
 		log("playImpl: closing existing");
 		try {
@@ -202,7 +203,11 @@ Player.prototype.playImpl = function() {
 	// NOTE: вызовется в _startPrepare. После prepareAsync метод seekTo отрабатывает в два раза быстрее и становится асинхронным
 	if (ui.startPosition) {
 		this._pendingSeek = ui.startPosition;
+		ui.progress = ui.startPosition
+		this._blockProgressUpdate = true;
 		log("queued pending startPosition", this._pendingSeek);
+	} else {
+		ui.progress = 0
 	}
 	this._startPrepare();
 }
@@ -230,7 +235,6 @@ Player.prototype._startPrepare = function() {
 					avplay.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
 			}
 			self.updateDuration()
-			ui.ready = (avplay.getState() === "READY");
 			if (self._pendingSeek !== null) {
 				log("startPosition queued, doing seek first", self._pendingSeek);
 				// гарантия, что после seek будет запущен play
@@ -238,12 +242,7 @@ Player.prototype._startPrepare = function() {
 				self._doSeek();
 				return;
 			}
-			if (self._pendingPlay || ui.autoPlay) {
-				self._pendingPlay = false;
-				self._doPlay();
-			} else {
-				self._syncAvplayState();
-			}
+			self.checkPendingPlay()
 		}, function(err) {
 			log("prepareError", err);
 			self._preparing = false;
@@ -279,7 +278,7 @@ Player.prototype._syncAvplayState = function() {
 	try {
 		var avplay = this.getAVPlay();
 		if (!avplay || !this.ui) return;
-		var s = avplay.getState();
+		var s = this.getState();
 		// keep mapping you use for paused
 		this.ui.paused = (s === "PAUSED" || s === "STOPPED" || s === "NONE" || s === "IDLE");
 	} catch (e) {
@@ -293,7 +292,7 @@ Player.prototype.play = function() {
 		log("AVPlay was not initialized")
 		return
 	}
-	var state = avplay.getState()
+	var state = this.getState()
 	if (state === "READY" || state === "PAUSED") {
 		this._doPlay();
 		return;
@@ -416,7 +415,7 @@ Player.prototype.setAudioTrack = function(trackId) {
 
 	log("Try to set audio track", found)
 	if (found && found.length) {
-		log("Seek after audio state", avplay.getState())
+		log("Seek after audio state", this.getState())
 		avplay.setSelectTrack("AUDIO", parseInt(found[0].index));
 		this.seek(1)
 	}
@@ -468,7 +467,7 @@ Player.prototype.setVisibility = function(visible) {
 		// return
 	// }
 
-	// log("setVisibility", visible, "state", avplay.getState(), "notsuspend", this._notSuspend)
+	// log("setVisibility", visible, "state", this.getState(), "notsuspend", this._notSuspend)
 	// if (this._notSuspend)
 		// return
 
@@ -548,21 +547,23 @@ Player.prototype.seek = function(delta) {
 
 Player.prototype.seekTo = function(tp) {
 	var avplay = this.getAVPlay()
+	var self = this;
 	if (!avplay) {
 		log("AVPlay was not initialized")
 		return
 	}
 	tp = Math.max(0, tp);
+	self.ui.progress = tp
 	// логика дебаунса
-	this._pendingSeek = tp;
-	if (this._seekTimer) {
-		clearTimeout(this._seekTimer);
+	self._pendingSeek = tp;
+	self._blockProgressUpdate = true;
+	if (self._seekTimer) {
+		clearTimeout(self._seekTimer);
 	}
-	var self = this;
-	this._seekTimer = setTimeout(function() {
+	self._seekTimer = setTimeout(function() {
 		self._seekTimer = null;
 		self._doSeek();
-	}, 120);
+	}, 500);
 };
 
 Player.prototype._doSeek = function() {
@@ -577,25 +578,28 @@ Player.prototype._doSeek = function() {
 	var target = self._pendingSeek;
 	self._pendingSeek = null;
 	self._seekingDebaunce = true;
+	var state = this.getState()
 	self.ui.seeking = true;
 	var ms = Math.floor(target * 1000);
 	self._blockProgressUpdate = true;
 	// NOTE: может быть кейс, при котором avplay.seekTo не вернет коллбеки. В таком случаи
 	// не снимется _seekingDebaunce, из за чего последующая перемотка не будет работать
+	// блокируем обновление ui.progress, для того что бы избежать получение неправильного progress
 	if (self._seekStuckTimer) {
 		clearTimeout(self._seekStuckTimer);
 		self._seekStuckTimer = null;
 	}
 	self._seekStuckTimer = setTimeout(function() {
-		if (self._seekingDebaunce) {
-			log("_doSeek: seek seems stuck. Clearing _seekingDebaunce");
+		if (self.ui.seeking) {
 			self._seekingDebaunce = false;
 			self.ui.seeking = false;
 			self._blockProgressUpdate = false;
 			self._syncAvplayState();
+			self.updateCurrentTime()
+			self._seekStuckTimer = null;
+			self.checkPendingPlay()
 		}
-		self._seekStuckTimer = null;
-	}, 1500);
+	}, 5000);
 
 	try {
 		avplay.seekTo(ms,
@@ -603,82 +607,71 @@ Player.prototype._doSeek = function() {
 			function(err) { self._onSeekResult(err, target); }
 		);
 	} catch (e) {
-		log("_doSeek: seekTo threw", e);
-		this._seekingDebaunce = false;
-		this.ui.seeking = false;
-		this._syncAvplayState();
-		self._blockProgressUpdate = false;
-		if (self._seekStuckTimer) {
-			clearTimeout(self._seekStuckTimer)
-			self._seekStuckTimer = null
-		}
+		setTimeout(function() {
+			try {
+				avplay.seekTo(ms,
+					function() { self._onSeekResult(null, target); },
+					function(err) { self._onSeekResult(err, target); }
+				);
+			} catch (e2) {
+				self._seekingDebaunce = false;
+				self.ui.seeking = false;
+				self._blockProgressUpdate = false;
+				self._syncAvplayState();
+				self.updateCurrentTime()
+			}
+		}, 1500)
 	}
-	// блокируем обновление ui.progress, для того что бы избежать получение неправильного progress
-	setTimeout(function() {
-		self._blockProgressUpdate = false;
-	}, 1500);
 };
 
-// замените существующую success-ветку в _onSeekResult на это
 Player.prototype._onSeekResult = function(err, target) {
 	var self = this;
-	if (self._seekStuckTimer) {
-		clearTimeout(self._seekStuckTimer);
-		self._seekStuckTimer = null;
-	}
 	var avplay = this.getAVPlay();
-	if (err) {
-		log("_onSeekResult: error", err);
-		this._seekingDebaunce = false;
-		this.ui.seeking = false;
-		if (this._pendingSeek !== null) {
-			setTimeout(function(){
-				self._doSeek()
-			}, 200);
-			return;
-		}
-		this._syncAvplayState();
-		return;
-	}
-	this._seekingDebaunce = false;
-	this.ui.seeking = false;
-	this._seekRetry = 0;
-	this.updateCurrentTime();
-	// если пришёл новый seek — делаем его
-	if (this._pendingSeek !== null) {
-		setTimeout(function(){
-			self._doSeek();
-		}, 60);
-		return;
+	self._seekingDebaunce = false;
+	self.ui.seeking = false;
+	if (self._seekResultPlayingCheckTimer) {
+		clearTimeout(self._seekResultPlayingCheckTimer)
+		self._seekResultPlayingCheckTimer = null
 	}
 	// через небольшую задержку проверим состояние плеера и, если он не PLAYING, запускаем воспроизведение
 	// это решает ситуацию, с остановившимся плеером, если установлен startPosition
-	// NOTE: несмотря на то что _doSeek синхронный, avplay.getState() возвращает не актуальное состояние.
+	// NOTE: несмотря на то что _doSeek синхронный, this.getState() возвращает не актуальное состояние.
 	// т.е. без таймера никуда
-	setTimeout(function() {
-		var state = avplay.getState()
-		// если есть pendingPlay/autoPlay — гарантируем запуск
-		if (self._pendingPlay || self.ui.autoPlay) {
-			self._pendingPlay = false;
-			try {
-				// используем _doPlay чтобы сохранить единое поведение
-				self._doPlay();
-			} catch (e) {
-				log("_onSeekResult: _doPlay error", e);
-			}
+	this._seekResultPlayingCheckTimer = setTimeout(function() {
+		if (self.ui.seeking || self._seekingDebaunce) {
 			return;
 		}
-		if (state !== "PLAYING" && !self.ui.paused) {
-			try {
-				avplay.play();
-				log("_onSeekResult: invoked avplay.play() after seek");
-			} catch (e) {
-				log("_onSeekResult: avplay.play() threw", e);
-			}
+		// если пришёл новый seek — делаем его
+		if (self._pendingSeek !== null) {
+			self._doSeek();
+			return;
 		}
+		self._blockProgressUpdate = false;
 		self._syncAvplayState();
-	}, 150);
+		if (err) {
+			self._syncAvplayState();
+			return;
+		}
+		self.checkPendingPlay()
+	}, 1000);
 };
+
+Player.prototype.checkPendingPlay = function() {
+	var state = this.getState()
+	if (state !== "READY" && state !== "PAUSED") return
+	// если есть pendingPlay/autoPlay — гарантируем запуск
+	if (this._pendingPlay || this.ui.autoPlay) {
+		this._pendingPlay = false;
+		try {
+			// используем _doPlay чтобы сохранить единое поведение
+			this._doPlay();
+		} catch (e) {
+			log("_onSeekResult: _doPlay error", e);
+		}
+		return;
+	}
+	this._syncAvplayState();
+}
 
 Player.prototype.setVolume = function(volume) {
 	// TODO: its set to max the system volume
@@ -697,7 +690,7 @@ Player.prototype.setRect = function(l, t, r, b) {
 		// log("AVPlay was not initialized")
 		// return
 	// }
-	// var st = avplay.getState();
+	// var st = this.getState();
 	// log("@@set rect", st)
 	// if (st === "IDLE" || st === "READY" || st === "PLAYING" || st === "PAUSED") {
 		// avplay.setDisplayRect(l, t, r - l, b - t)
@@ -717,7 +710,7 @@ Player.prototype.setLoop = function(loop) {
 Player.prototype.closeVideo = function() {
 	var avplay = this.getAVPlay();
 	if (!avplay) return;
-	log("closeVideo: state:", avplay.getState());
+	log("closeVideo: state:", this.getState());
 	try {
 		avplay.stop();
 	} catch (e) {
@@ -746,20 +739,28 @@ Player.prototype.updateDuration = function() {
 		return
 	}
 	this.ui.duration = avplay.getDuration() / 1000
-	log("Duration", this.ui.duration)
 }
 
 Player.prototype.setOption = function(name, value) {
 }
 
 Player.prototype.updateCurrentTime = function() {
-	if (this._blockProgressUpdate) return
+	if (this._blockProgressUpdate || this.ui.seeking) return
 	var avplay = this.getAVPlay()
 	if (!avplay) {
 		log("AVPlay was not initialized")
 		return
 	}
 	this.ui.progress = avplay.getCurrentTime() / 1000
+}
+
+Player.prototype.getState = function() {
+	var avplay = this.getAVPlay()
+	if (!avplay) {
+		log("AVPlay was not initialized")
+		return
+	}
+	return avplay.getState()
 }
 
 exports.createPlayer = function(ui) {
