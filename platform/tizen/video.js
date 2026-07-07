@@ -401,7 +401,7 @@ Player.prototype.setSubtitles = function(trackId) {
 	})
 
 	log("Try to set subtitles", found)
-	if (found && found.length)
+	if (found && found.length) 
 		avplay.setSelectTrack("TEXT", parseInt(found[0].index));
 }
 
@@ -460,39 +460,6 @@ Player.prototype.setVideoTrack = function(trackId) {
 }
 
 Player.prototype.setVisibility = function(visible) {
-	// TODO: suspend режим
-	// var avplay = this.getAVPlay()
-	// if (!avplay) {
-		// log("AVPlay was not initialized")
-		// return
-	// }
-
-	// log("setVisibility", visible, "state", this.getState(), "notsuspend", this._notSuspend)
-	// if (this._notSuspend)
-		// return
-
-	// if (visible) {
-		// log("Check suspend state", this._suspendState)
-		// if (this._suspendState) {
-			// var state = this._suspendState
-			// try {
-				// avplay.restore(state.url, state.progress * 1000)
-			// } catch (e) {
-				// log("Failed to restore")
-			// }
-		// }
-		// this._suspendState = null
-	// } else {
-		// try {
-			// this._suspendState = {
-				// progress: this.ui.progress,
-				// url: this.ui.source
-			// }
-			// avplay.suspend()
-		// } catch (e) {
-			// log("Failed to suspend avplay", e)
-		// }
-	// }
 }
 
 Player.prototype.pause = function() {
