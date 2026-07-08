@@ -14,7 +14,6 @@ var Player = function(ui) {
 
 	player.on('canplay', function() {
 		log("canplay", dom.readyState);
-		ui.ready = dom.readyState;
 		ui.waiting = false;
 		if (self._seekAfterSwitchProgress) {
 			self.seekTo(self._seekAfterSwitchProgress)
