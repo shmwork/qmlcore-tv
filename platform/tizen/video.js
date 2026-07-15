@@ -347,10 +347,6 @@ Player.prototype.getVideoTracks = function() {
 
 Player.prototype.getSubtitles = function() {
 	var subtitles = []
-	subtitles.push({
-		id: "off",
-		label: "Выкл"
-	})
 	var avplay = this.getAVPlay()
 	var tracks = avplay.getTotalTrackInfo()
 
@@ -363,7 +359,7 @@ Player.prototype.getSubtitles = function() {
 
 		subtitles.push({
 			id: parseInt(track.index),
-			label: "Русский",
+			label: "-",
 			language: info.track_lang
 		})
 	}
@@ -394,6 +390,13 @@ Player.prototype.getAudioTracks = function() {
 
 Player.prototype.setSubtitles = function(trackId) {
 	var avplay = this.getAVPlay()
+
+	if (!trackId) {
+		avplay.setSilentSubtitle(true);
+		log("Hide subs")
+		return
+	}
+
 	var tracks = avplay.getTotalTrackInfo()
 
 	var found = tracks.filter(function(element) {
@@ -401,8 +404,10 @@ Player.prototype.setSubtitles = function(trackId) {
 	})
 
 	log("Try to set subtitles", found)
-	if (found && found.length) 
+	if (found && found.length) {
 		avplay.setSelectTrack("TEXT", parseInt(found[0].index));
+		avplay.setSilentSubtitle(false);
+	}
 }
 
 Player.prototype.setAudioTrack = function(trackId) {
