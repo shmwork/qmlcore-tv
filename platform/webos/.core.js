@@ -39,7 +39,8 @@ if ('webOS' in window || 'webos' in window) {
 		417: 'FastForward',
 		457: 'Info',
 		413: 'Stop',
-		415: 'Play'
+		415: 'Play',
+		1007: 'PreviousChannel'
 	}
 
 	log("webos initialized")
