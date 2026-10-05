@@ -64,7 +64,6 @@ var Player = function(ui) {
 			}
 		}),
 		onsubtitlechange : this.wrapCallback(function(duration, text, data3, data4) {
-			log("Subtitle Changed.");
 			self.ui.text(text, duration, data4)
 		}),
 		ondrmevent : this.wrapCallback(function(drmEvent, drmData) {
