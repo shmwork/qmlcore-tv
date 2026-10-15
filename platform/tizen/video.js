@@ -13,7 +13,6 @@ var Player = function(ui) {
 	this._pendingSeek = null;			// нужен для проброса  ui.startPosition
 	this._seekingDebaunce = false
 	this._seekTimer = null;				// таймер для дебаунса seekTo
-	this._blockProgressUpdate = false	// блокирует updateCurrentTime, что бы избежать дергание ползунка
 	this._seekStuckTimer = null; // таймер для проверки залипшего seek
 	this._seekResultPlayingCheckTimer = null; // таймер для проверки залипшего seek
 	log("WEBAPIS", this._webapis)
@@ -30,13 +29,11 @@ var Player = function(ui) {
 	this._listener = {
 		onbufferingstart : this.wrapCallback(function() {
 			self.ui.waiting = true
-			self.ui.seeking = true
 		}),
 		onbufferingprogress : this.wrapCallback(function(percent) {
 			context._processActions()
 		}),
 		onbufferingcomplete : this.wrapCallback(function() {
-			self.ui.seeking = false
 			self.ui.waiting = false
 			// confirm avplay internal state after buffering completes
 			self._syncAvplayState();
@@ -128,8 +125,22 @@ Player.prototype.getAVPlay = function() {
 	return webapis && webapis.avplay ? webapis.avplay : null
 }
 
+function fixPlayerSource(url) {
+	var parts = /^(https?:\/\/[^/?#]*)(.*)$/.exec(url)
+	if (!parts)
+		return url
+	return parts[1] + parts[2].replace(/:/g, "%3A")
+}
+
+// NOTE: если вызывается второй раз с тем же url но уже с startPosition то отваливается с ошибкой PLAYER_ERROR_INVALID_URI
+// замена ":" в ссылке на "%3A" решает проблему
 Player.prototype.setSource = function(value) {
 	if (!value) return
+	var source = fixPlayerSource(value)
+	if (source !== value) {
+		this.ui.source = source
+		value = source
+	}
 	this.ui.ready = false
 	log("drmRequired", this._drmRequired)
 	if (this._drmRequired && this._drm)
@@ -203,7 +214,6 @@ Player.prototype.playImpl = function() {
 	if (ui.startPosition) {
 		this._pendingSeek = ui.startPosition;
 		ui.progress = ui.startPosition
-		this._blockProgressUpdate = true;
 		log("queued pending startPosition", this._pendingSeek);
 	} else {
 		ui.progress = 0
@@ -527,7 +537,6 @@ Player.prototype.seekTo = function(tp) {
 	self.ui.progress = tp
 	// логика дебаунса
 	self._pendingSeek = tp;
-	self._blockProgressUpdate = true;
 	if (self._seekTimer) {
 		clearTimeout(self._seekTimer);
 	}
@@ -552,7 +561,6 @@ Player.prototype._doSeek = function() {
 	var state = this.getState()
 	self.ui.seeking = true;
 	var ms = Math.floor(target * 1000);
-	self._blockProgressUpdate = true;
 	// NOTE: может быть кейс, при котором avplay.seekTo не вернет коллбеки. В таком случаи
 	// не снимется _seekingDebaunce, из за чего последующая перемотка не будет работать
 	// блокируем обновление ui.progress, для того что бы избежать получение неправильного progress
@@ -564,11 +572,13 @@ Player.prototype._doSeek = function() {
 		if (self.ui.seeking) {
 			self._seekingDebaunce = false;
 			self.ui.seeking = false;
-			self._blockProgressUpdate = false;
 			self._syncAvplayState();
 			self.updateCurrentTime()
 			self._seekStuckTimer = null;
-			self.checkPendingPlay()
+			if (self._pendingSeek !== null)
+				self._doSeek();
+			else
+				self.checkPendingPlay();
 		}
 	}, 5000);
 
@@ -587,7 +597,6 @@ Player.prototype._doSeek = function() {
 			} catch (e2) {
 				self._seekingDebaunce = false;
 				self.ui.seeking = false;
-				self._blockProgressUpdate = false;
 				self._syncAvplayState();
 				self.updateCurrentTime()
 			}
@@ -617,7 +626,6 @@ Player.prototype._onSeekResult = function(err, target) {
 			self._doSeek();
 			return;
 		}
-		self._blockProgressUpdate = false;
 		self._syncAvplayState();
 		if (err) {
 			self._syncAvplayState();
@@ -699,7 +707,6 @@ Player.prototype.closeVideo = function() {
 	this._seekTimer && clearTimeout(this._seekTimer);
 	this._seekTimer = null;
 	this._seekingDebaunce = false;
-	this._blockProgressUpdate = false;
 	this._preparingStartedAt = 0;
 };
 
@@ -716,7 +723,7 @@ Player.prototype.setOption = function(name, value) {
 }
 
 Player.prototype.updateCurrentTime = function() {
-	if (this._blockProgressUpdate || this.ui.seeking) return
+	if (this.ui.seeking) return
 	var avplay = this.getAVPlay()
 	if (!avplay) {
 		log("AVPlay was not initialized")
