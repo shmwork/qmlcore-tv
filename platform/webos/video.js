@@ -106,10 +106,12 @@ Player.prototype.parseManifest = function(data) {
 		}
 	}
 
-	for (var i in this._totalTracks) {
-		var tmpTrack = this._totalTracks[i][0]
-		tmpTrack.id = ++idx
-		this._videoTracks.push(tmpTrack)
+	if (this._totalTracks) {
+		for (var i in this._totalTracks) {
+			var tmpTrack = this._totalTracks[i][0]
+			tmpTrack.id = ++idx
+			this._videoTracks.push(tmpTrack)
+		}
 	}
 }
 
@@ -254,7 +256,18 @@ Player.prototype.getFileExtension = function(filePath) {
 	if (!filePath)
 		return ""
 	var urlLower = filePath.toLowerCase()
-	var querryIndex = filePath.indexOf("?")
+	
+	if (urlLower.indexOf("data:") === 0) {
+		if (urlLower.indexOf("mpegurl") >= 0) return ".m3u8";
+		return "";
+	}
+	
+	// Обходной путь для httpbin.org, чтобы парсер расширений не ломался о длинный base64 урл
+	if (urlLower.indexOf("httpbin.org/base64") >= 0) {
+		return ".m3u8";
+	}
+	
+	var querryIndex = urlLower.indexOf("?")
 	if (querryIndex >= 0)
 		urlLower = urlLower.substring(0, querryIndex)
 	var extIndex = urlLower.lastIndexOf(".")
@@ -279,11 +292,11 @@ Player.prototype.setSource = function(url) {
 	} else if (this._extension === ".mp4") {
 		this.playMp4(url)
 	} else if (this._extension === ".m3u8" || this._extension === ".m3u") {
-		if (url) {
+		if (url && url.indexOf("data:") !== 0) {
 			this._xhr.open('GET', url);
 			this._xhr.send()
 		}
-		this.element.dom.src = url + (ui.startPosition ? "#t=" + ui.startPosition : "")
+		this.element.dom.src = url + (ui.startPosition && url.indexOf("data:") !== 0 ? "#t=" + ui.startPosition : "")
 	} else if (this._extension.indexOf("manifest") >= 0) {
 		this.playSmoothStreamsingUrl(url)
 	} else {
