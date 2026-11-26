@@ -137,10 +137,8 @@ function fixPlayerSource(url) {
 Player.prototype.setSource = function(value) {
 	if (!value) return
 	var source = fixPlayerSource(value)
-	if (source !== value) {
-		this.ui.source = source
-		value = source
-	}
+	this._source = source
+	this.ui.source = value
 	this.ui.ready = false
 	log("drmRequired", this._drmRequired)
 	if (this._drmRequired && this._drm)
@@ -150,7 +148,7 @@ Player.prototype.setSource = function(value) {
 
 	// TODO: проверить работу suspend
 	if (this._suspendState) {
-		this._suspendState.url = value
+			this._suspendState.url = source
 		this._suspendState.progress = this.ui.startPosition
 	}
 	if (this._preparing) {
@@ -183,7 +181,7 @@ Player.prototype.playImpl = function() {
 	ui.duration = 0
 	log("playImpl open")
 	try {
-		avplay.open(ui.source)
+		avplay.open(this._source || ui.source)
 	} catch (e) {
 		log("open error", e)
 	}

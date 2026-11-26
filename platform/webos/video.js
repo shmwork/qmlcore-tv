@@ -291,6 +291,30 @@ Player.prototype.setSource = function(url) {
 	}
 }
 
+Player.prototype.stop = function() {
+	var baseStop = _globals.video.html5.backend.Player.prototype.stop;
+
+	if (typeof baseStop === "function")
+		baseStop.call(this);
+
+	var video = this.element.dom;
+
+	video.pause();
+	video.removeAttribute('src');
+
+	while (video.firstChild)
+		video.removeChild(video.firstChild);
+
+	this._sourceElement = null;
+
+	video.load();
+
+	this.ui.ready = false;
+	this.ui.seeking = false;
+	this.ui.waiting = false;
+	this.ui.duration = 0;
+};
+
 Player.prototype.pause = function() {
 	var ui = this.ui
 	if (!ui)
